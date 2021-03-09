@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/BurntSushi/toml"
 	"github.com/fatih/color"
 	"github/luoyayu/goidx/api"
 	"github/luoyayu/goidx/config"
 	"github/luoyayu/goidx/utils"
 	S "gopkg.in/abiosoft/ishell.v2"
+	"io"
+	"log"
+	"net/http"
 	"net/url"
-	"github.com/BurntSushi/toml"
 	"os"
 	"path"
 	"path/filepath"
@@ -52,7 +55,7 @@ func main() {
 		os.Exit(0)
 	})
 
-	s.Println("google drive index (gavinhty@gmail.com)")
+	s.Println("google shared drive index")
 
 	// dd
 	s.AddCmd(&S.Cmd{Name: "dd",
@@ -172,7 +175,38 @@ func main() {
 					choice := c.MultiChoice(choicePlayable, "select to play")
 					if choice >= 0 && choice < len(playableFiles) {
 						selected := playableFiles[choice]
-						//log.Println("play for", selected.Name)
+						log.Println("play for", selected.Name)
+
+						var playArgs []string
+						if selected.IsVideo {
+
+							selectedFileBaseName := strings.TrimRight(filepath.Base(selected.Name), filepath.Ext(selected.Name))
+							var selectedCaptions []*api.File
+
+							for _, f := range files {
+								if strings.HasPrefix(f.Name, selectedFileBaseName) && !f.IsVideo && strings.HasSuffix(f.Name, ".ass") {
+									selectedCaptions = append(selectedCaptions, f)
+								}
+							}
+
+							for _, f := range selectedCaptions {
+								url_ := (&url.URL{
+									Scheme:   "https",
+									Host:     config.WorkerHost,
+									Path:     WorkDir + "/" + f.Name,
+									RawQuery: url.Values{"rootId": []string{WorkDrive.Id}}.Encode(),
+								}).String()
+
+								if resp, err := http.Get(url_); err != nil {
+									log.Printf("download caption %q, err: %v\n", f.Name, err)
+								} else {
+									file, _ := os.Create(filepath.Join(os.TempDir(), f.Name))
+									io.Copy(file, resp.Body)
+									resp.Body.Close()
+									playArgs = append(playArgs, "--sub-file="+filepath.Join(os.TempDir(), f.Name))
+								}
+							}
+						}
 
 						url_ := (&url.URL{
 							Scheme:   "https",
@@ -180,7 +214,7 @@ func main() {
 							Path:     WorkDir + "/" + selected.Name,
 							RawQuery: url.Values{"rootId": []string{WorkDrive.Id}}.Encode(),
 						}).String()
-						go utils.Play(ctx, url_, selected.Name, "")
+						go utils.Play(ctx, url_, selected.Name, "", playArgs...)
 						c.Println("You can type `stop` to kill mpv!")
 					}
 				} else {

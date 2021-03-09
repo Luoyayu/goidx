@@ -8,15 +8,19 @@ import (
 	"log"
 	"os/exec"
 	"runtime"
+	"strings"
 )
 
-func Play(ctx context.Context, url, title string, auth string) {
+func Play(ctx context.Context, url, title string, auth string, args ...string) {
 	if auth == "" {
 		auth = config.RootBasicAuth
 	}
 	header := fmt.Sprintf("--http-header-fields=authorization: %s", auth)
 	playArgs := []string{header, "--autofit=640", url}
-	//log.Println(strings.Join(playArgs, " "))
+	playArgs = append(playArgs, args...)
+	playArgs = append(playArgs, url)
+
+	log.Println("[play] mpv args:", strings.Join(playArgs, " "))
 
 	cmd := exec.CommandContext(ctx, "mpv", playArgs...)
 	switch runtime.GOOS {
